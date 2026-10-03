@@ -118,11 +118,12 @@ jobs:
           test -x /usr/local/Vircon32/DevTools/packrom
 
       # v32lua turns the TIC-80 and PICO-8 carts into Vircon32 ones (assembly and a ROM definition,
-      # finished by the DevTools above); built from source, it has no release builds
+      # finished by the DevTools above); built from source, it has no release builds. Its dev
+      # branch: main (the default) is older and lacks options the build uses, such as --title
       - name: Build v32lua
         run: |
           set -e
-          git clone --depth 1 https://github.com/wedge1020/v32lua.git "$HOME/toolchains/v32lua"
+          git clone --depth 1 -b dev https://github.com/wedge1020/v32lua.git "$HOME/toolchains/v32lua"
           make -C "$HOME/toolchains/v32lua"
           test -x "$HOME/toolchains/v32lua/bin/v32lua"
 
