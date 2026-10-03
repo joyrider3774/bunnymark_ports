@@ -57,7 +57,8 @@ version and how to build it.
 folders it looks for (Arduino IDE 1.8 and 2, bateske/CHGame's libraries, ESP-IDF and the
 AKA library, MSYS2, the Vircon32 DevTools, the Emscripten SDK). The GitHub workflow (`.github/workflows/build-releases.yml`, run by
 hand or on a `v*` tag) installs pinned versions of all of it on a Linux runner, builds
-every version the same way and uploads `releases/` as an artifact.
+every version the same way and uploads `releases/` as an artifact. A second job builds the
+SDL port for Linux (x64, arm64) and macOS (Intel, Apple silicon), one artifact per runner.
 
 ## The bunny
 

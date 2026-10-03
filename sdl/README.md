@@ -134,6 +134,11 @@ nothing has to be installed.
 with `--cross-windows`, with mingw-w64 on Linux and the downloaded SDLs (the CI does
 this).
 
+The GitHub workflow's `desktop` job builds both for Linux (Ubuntu 22.04, 24.04 and 26.04,
+x64 and arm64) and macOS (15 and 26, Intel and Apple silicon) with the downloaded SDLs, so
+they run without SDL installed: one artifact per runner, the two programs in a folder on
+Linux and `BunnyMark_SDL2.app` / `BunnyMark_SDL3.app` (ad hoc signed) on the Mac.
+
 `bunny.h` comes from `tools/make_sprites.py` in the folder above; `font8x8_basic.h`
 is the public domain 8x8 font from the Gamebuino AKA library (SDL2 has no text of
 its own).
