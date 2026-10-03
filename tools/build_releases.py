@@ -14,9 +14,12 @@ Every file is named <device>_BunnyMark<variant>.<ext>, for example PicoSystem_Bu
   Tufty          .uf2   hold HOME while pressing RESET and copy it onto the drive that appears
   Aka            .zip   the folder for the AKA launcher's SD card: firmware.bin, meta.json, screen.bmp
   Windows        .exe   _SDL2 and _SDL3, linked statically, they run on their own
-  Vircon32       .v32   the cartridge, for the Vircon32 emulator (desktop or web)
+  Vircon32       .v32   the cartridge, for the Vircon32 emulator (desktop or web); _TIC80 and _PICO8
+                        the TIC-80 and PICO-8 carts made into Vircon32 cartridges by v32lua
   Web            .zip   _SDL2 and _SDL3: index.html, .js and .wasm, ready for a web server or an
                         itch.io HTML game
+  TIC80          .tic   the TIC-80 cart (made here from tic80/bunnymark.lua), for TIC-80 itself
+  PICO8          .p8    the PICO-8 cart, for PICO-8 itself
 
 The settings of a build are passed to the compiler as defines; the sources are not touched. What
 is built for each device is listed in TARGETS below, how in DEVICES.
@@ -26,7 +29,9 @@ PyBadge, the PyGamer and the Pimoroni devices, the Arduino IDE 2's arduino-cli f
 (whose board package is only published for IDE 2) and the Arduboy, bateske/CHGame's libraries
 (CHGfx, CHGame, CHSd) for the CHGame, ESP-IDF and the Gamebuino AKA library for the AKA, and MSYS2
 with the mingw64 cmake, ninja, gcc, SDL2 and SDL3 for the Windows exes, and the Vircon32 DevTools
-(compile, assemble, png2vircon, packrom) for the Vircon32 cartridge.
+(compile, assemble, png2vircon, packrom) for the Vircon32 cartridge, and v32lua
+(github.com/wedge1020/v32lua) with them for the Vircon32 cartridges made from the TIC-80 and PICO-8
+carts. The TIC-80 and PICO-8 carts themselves need nothing.
 
 Usage:
   python tools/build_releases.py                 build everything
@@ -51,10 +56,12 @@ Usage:
   --vircon32 DIR     the Vircon32 DevTools folder (default C:/utils/vircon32/DevTools, or
                      VIRCON32_DEVTOOLS; the Linux package puts them in /usr/local/Vircon32/DevTools)
   --emsdk DIR        the Emscripten SDK for the browser build (default EMSDK, or C:/github/emsdk)
+  --v32lua PATH      the v32lua compiler (default V32LUA, or C:/github/v32lua/bin/v32lua)
 """
 import argparse
 import glob
 import os
+import re
 import shutil
 import struct
 import subprocess
@@ -95,6 +102,11 @@ TARGETS = [
     ("Vircon32", "", {}),
     ("Web", "_SDL2", {"BUNNYMARK_SDL": 2}),
     ("Web", "_SDL3", {"BUNNYMARK_SDL": 3}),
+    ("TIC80", "", {}),
+    ("PICO8", "", {}),
+    # the TIC-80 and PICO-8 carts made into Vircon32 cartridges by v32lua
+    ("Vircon32", "_TIC80", {}),
+    ("Vircon32", "_PICO8", {}),
 ]
 
 # sketch: the sketch folder. fqbn: board and options. cli: built with arduino-cli even next to an Arduino IDE 1.8. libraries: extra library
@@ -165,7 +177,19 @@ DEVICES = {
     },
     "Vircon32": {
         "vircon32": "vircon32",
+        # the variants _TIC80 and _PICO8 are those carts compiled by v32lua instead of the C program
+        "carts": {"_TIC80": "TIC80", "_PICO8": "PICO8"},
         "outputs": ["v32"],
+    },
+    "TIC80": {
+        # the cart as a TIC-80 .lua project (code, then its -- <TILES> and -- <PALETTE> sections),
+        # released as a binary .tic made from it here
+        "cart": "tic80/bunnymark.lua",
+        "outputs": ["tic"],
+    },
+    "PICO8": {
+        "cart": "pico8/bunnymark.p8",
+        "outputs": ["p8"],
     },
     "Web": {
         "cmake": "sdl",
@@ -449,6 +473,87 @@ def build_vircon32(build_dir, args, log):
     return os.path.join(build_dir, "BunnyMark")
 
 
+def lua_to_tic(text):
+    """A binary TIC-80 cart (.tic) from a .lua project: its code, tiles and palette as chunks of
+    a 4 byte header (type in bits 0-4 and bank in bits 5-7 of the first byte, the size in the next
+    two, little endian, then a reserved byte) and the data without its trailing zeros (TIC-80's
+    src/cart.c). The project's sections are one hex digit per pixel; in the cart a byte holds two
+    pixels, the left one in its low nibble"""
+    CODE, TILES, PALETTE = 5, 1, 12
+    start = text.find("\n-- <")
+    code = (text if start < 0 else text[:start]).rstrip() + "\n"
+    sections = {}
+    for name, body in re.findall(r"^-- <(\w+)>\n(.*?)^-- </\1>", text, re.M | re.S):
+        sections[name] = {int(n): row for n, row in re.findall(r"^-- (\d{3}):([0-9a-fA-F]+)$", body, re.M)}
+    tiles = bytearray(256 * 32)
+    for index, row in sections.get("TILES", {}).items():
+        for i in range(32):
+            tiles[index * 32 + i] = int(row[2 * i], 16) | int(row[2 * i + 1], 16) << 4
+    palette = bytes.fromhex(sections.get("PALETTE", {}).get(0, ""))
+    out = bytearray()
+    for kind, data in ((TILES, bytes(tiles)), (PALETTE, palette), (CODE, code.encode("utf-8"))):
+        data = data.rstrip(b"\0")
+        if data:
+            out += struct.pack("<BHB", kind, len(data), 0) + data
+    return bytes(out)
+
+
+def build_cart(device, build_dir, log):
+    """The TIC-80 cart made into a .tic, or the PICO-8 cart copied, into the build folder as
+    BunnyMark.tic or .p8. Returns its path without extension"""
+    source = os.path.join(ROOT, DEVICES[device]["cart"])
+    os.makedirs(build_dir, exist_ok=True)
+    target = os.path.join(build_dir, GAME)
+    with open(log, "w") as f:
+        f.write(source + "\n")
+    if device == "TIC80":
+        with open(source, encoding="utf-8") as f:
+            data = lua_to_tic(f.read())
+        with open(target + ".tic", "wb") as f:
+            f.write(data)
+    else:
+        shutil.copyfile(source, target + ".p8")
+    return target
+
+
+def build_v32lua(device, build_dir, args, log):
+    """A TIC-80 or PICO-8 cart (the .tic made from the TIC-80 project, so the released cart is the
+    one converted) compiled by v32lua into assembly and a ROM definition, assembled and packed with
+    the Vircon32 DevTools. Returns the .v32's path without extension, or None"""
+    exe = ".exe" if os.name == "nt" else ""
+    tool = lambda name: os.path.join(args.vircon32, name + exe)
+    if not os.path.isfile(args.v32lua):
+        with open(log, "w") as f:
+            f.write("v32lua was not found at %s: pass --v32lua\n" % args.v32lua)
+        return None
+    if not os.path.isfile(tool("assemble")):
+        with open(log, "w") as f:
+            f.write("the Vircon32 DevTools were not found in %s: pass --vircon32\n" % args.vircon32)
+        return None
+    cart = build_cart(device, os.path.join(build_dir, "cart"), log + ".cart")
+    ext = ".tic" if device == "TIC80" else ".p8"
+    os.makedirs(os.path.join(build_dir, "obj"), exist_ok=True)
+    # v32lua writes the ROM definition (and the textures and sounds it lists) beside the assembly,
+    # with paths from the build folder (obj/...), where packrom looks from the definition's own
+    # folder: it is moved up first, as v32lua's demos do
+    commands = [
+        [args.v32lua, "--title", "[%s] %s" % (device, GAME), "-o", "obj/%s.asm" % GAME, cart + ext],
+        [tool("assemble"), "obj/%s.asm" % GAME, "-o", "obj/%s.vbin" % GAME],
+        "move",
+        [tool("packrom"), GAME + ".xml", "-o", GAME + ".v32"],
+    ]
+    with open(log, "w") as f:
+        for command in commands:
+            if command == "move":
+                os.replace(os.path.join(build_dir, "obj", GAME + ".xml"), os.path.join(build_dir, GAME + ".xml"))
+                continue
+            f.write(" ".join(command) + "\n")
+            f.flush()
+            if subprocess.run(command, stdout=f, stderr=subprocess.STDOUT, cwd=build_dir).returncode != 0:
+                return None
+    return os.path.join(build_dir, GAME)
+
+
 # ---------------------------------------------------------------------------------- the releases
 
 def release(device, variant, built):
@@ -514,6 +619,8 @@ def main():
     parser.add_argument("--cross-windows", action="store_true")
     parser.add_argument("--vircon32", default=os.environ.get("VIRCON32_DEVTOOLS", "C:/utils/vircon32/DevTools"))
     parser.add_argument("--emsdk", default=os.environ.get("EMSDK", "C:/github/emsdk"))
+    parser.add_argument("--v32lua", default=os.environ.get(
+        "V32LUA", "C:/github/v32lua/bin/v32lua" + (".exe" if os.name == "nt" else "")))
     args = parser.parse_args()
 
     targets = [t for t in TARGETS if not args.only or t[0] in args.only]
@@ -540,8 +647,12 @@ def main():
             built = build_web(defines, build_dir, args, log)
         elif "cmake" in DEVICES[device]:
             built = build_windows(defines, build_dir, args, log)
+        elif "vircon32" in DEVICES[device] and variant in DEVICES[device]["carts"]:
+            built = build_v32lua(DEVICES[device]["carts"][variant], build_dir, args, log)
         elif "vircon32" in DEVICES[device]:
             built = build_vircon32(build_dir, args, log)
+        elif "cart" in DEVICES[device]:
+            built = build_cart(device, build_dir, log)
         else:
             built = build_arduino(device, defines, build_dir, args, log)
         if built is None:

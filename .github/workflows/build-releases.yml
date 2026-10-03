@@ -117,6 +117,15 @@ jobs:
           test -x /usr/local/Vircon32/DevTools/compile
           test -x /usr/local/Vircon32/DevTools/packrom
 
+      # v32lua turns the TIC-80 and PICO-8 carts into Vircon32 ones (assembly and a ROM definition,
+      # finished by the DevTools above); built from source, it has no release builds
+      - name: Build v32lua
+        run: |
+          set -e
+          git clone --depth 1 https://github.com/wedge1020/v32lua.git "$HOME/toolchains/v32lua"
+          make -C "$HOME/toolchains/v32lua"
+          test -x "$HOME/toolchains/v32lua/bin/v32lua"
+
       - name: Install Emscripten
         run: |
           set -e
@@ -136,6 +145,7 @@ jobs:
             --idf-tools "$HOME/toolchains/espressif" \
             --aka-lib "$HOME/toolchains/Gamebuino_AKA_lib" \
             --vircon32 /usr/local/Vircon32/DevTools \
+            --v32lua "$HOME/toolchains/v32lua/bin/v32lua" \
             --emsdk "$HOME/toolchains/emsdk" \
             --msys2 "" \
             --cross-windows

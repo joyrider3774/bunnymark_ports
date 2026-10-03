@@ -256,6 +256,50 @@ def main():
     tex.save(path)
     print("wrote", path)
 
+    # TIC-80: tiles 0, 1, 16 and 17 (spr(0, x, y, key, 1, 0, 0, 2, 2) draws them as one 16x16
+    # sprite), one hex digit per pixel as a .lua cart writes them, black colour 0, white 12, the
+    # transparent pixels colour 2 (the cart's colour key). The palette is TIC-80's default
+    # (Sweetie 16) with 0 made pure black and 12 pure white
+    tic = {0: "0", 1: "c", CLEAR: "2"}
+    tiles = []
+    for ty in range(2):
+        for tx in range(2):
+            index = ty * 16 + tx
+            rows = "".join("".join(tic[small[ty * 8 + y][tx * 8 + x]] for x in range(8)) for y in range(8))
+            tiles.append("-- %03d:%s" % (index, rows))
+    palette = list(bytes.fromhex("1a1c2c5d275db13e53ef7d57ffcd75a7f07038b764257179"
+                                 "29366f3b5dc941a6f673eff7f4f4f494b0c2566c86333c57"))
+    palette[0:3] = [0, 0, 0]
+    palette[36:39] = [255, 255, 255]
+    path = os.path.join(HERE, "tic80", "bunnymark.lua")
+    replace_section(path, "-- <TILES>\n", "-- </TILES>\n", "\n".join(tiles) + "\n")
+    replace_section(path, "-- <PALETTE>\n", "-- </PALETTE>\n", "-- 000:" + bytes(palette).hex() + "\n")
+    print("wrote the bunny and the palette into", path)
+
+    # PICO-8: sprites 0, 1, 16 and 17, the top left 16x16 of the sheet (spr(0, x, y, 2, 2)), one
+    # hex digit per pixel. White is colour 7; black and transparent are both colour 0, PICO-8's
+    # transparent one (and v32lua's, which ignores palt()): the cart draws on black, so the bunny's
+    # black parts show the background
+    p8 = {0: "0", 1: "7", CLEAR: "0"}
+    rows = ["".join(p8[c] for c in row) + "0" * (128 - len(row)) for row in small]
+    path = os.path.join(HERE, "pico8", "bunnymark.p8")
+    with open(path, encoding="utf-8", newline="") as f:
+        text = f.read()
+    text = text[:text.index("__gfx__\n") + len("__gfx__\n")] + "\n".join(rows) + "\n"
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(text)
+    print("wrote the bunny into", path)
+
+
+def replace_section(path, start, end, content):
+    """Replaces what lies between the lines start and end of a text file with content"""
+    with open(path, encoding="utf-8", newline="") as f:
+        text = f.read()
+    a = text.index(start) + len(start)
+    b = text.index(end, a)
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(text[:a] + content + text[b:])
+
 
 if __name__ == "__main__":
     main()

@@ -1,0 +1,121 @@
+pico-8 cartridge // http://www.pico-8.com
+version 42
+__lua__
+-- bunnymark
+-- by joyrider3774: a port of timofffee's playdate bunnymark,
+-- itself raylib's textures_bunnymark. see readme.md.
+--
+-- o +1 bunny, x +100, up +500, down +1000 (each once when the
+-- button is let go); o + x takes them all away again.
+--
+-- the 16x16 bunny is the size every port draws, so the frame
+-- rates can be compared, at half the playdate's speed (sprites
+-- 0, 1, 16 and 17, written by tools/make_sprites.py). it is
+-- white on black: colour 0 is the transparent one, here and in
+-- the vircon32 version v32lua makes of this cart, so the bunny's
+-- black parts are left out and the black screen shows through.
+--
+-- fps and cpu are pico-8's own (stat(7), stat(1)). v32lua's
+-- stat() gives 0: there the vircon32 frame counter is used.
+
+max_bunnies=10000
+box_x,box_y,box_w,box_h=2,22,124,104
+bunny=16
+
+bx,by,bvx,bvy={},{},{},{}
+count=0
+down={}
+reset_held=false
+fps,cpu=0,0
+frames,since=0,0
+
+function add_bunnies(n)
+ for i=1,n do
+  if (count>=max_bunnies) return
+  count+=1
+  bx[count]=box_x+(box_w-bunny)/2
+  by[count]=box_y+(box_h-bunny)/2
+  -- the playdate's (rand()%500-250)/50 pixels, halved
+  bvx[count]=(flr(rnd(500))-250)/100
+  bvy[count]=(flr(rnd(500))-250)/100
+ end
+end
+
+-- true once, on the frame button b is let go
+function released(b)
+ local now=btn(b)
+ local was=down[b]
+ down[b]=now
+ return was and not now
+end
+
+function _update60()
+ if btn(4) and btn(5) then
+  count=0
+  reset_held=true
+ end
+ local o,x=released(4),released(5)
+ if not reset_held then
+  if (o) add_bunnies(1)
+  if (x) add_bunnies(100)
+ end
+ if (not btn(4) and not btn(5)) reset_held=false
+ if (released(2)) add_bunnies(500)
+ if (released(3)) add_bunnies(1000)
+
+ local maxx,maxy=box_x+box_w-bunny,box_y+box_h-bunny
+ for i=1,count do
+  local nx,ny=bx[i]+bvx[i],by[i]+bvy[i]
+  bx[i],by[i]=nx,ny
+  if (nx>maxx or nx<box_x) bvx[i]=-bvx[i]
+  if (ny>maxy or ny<box_y) bvy[i]=-bvy[i]
+ end
+end
+
+function _draw()
+ cls(0)
+ for i=1,count do
+  spr(0,bx[i],by[i],2,2)
+ end
+
+ -- the box and the text shake while a button that adds
+ -- bunnies is held, as on the playdate
+ local rx,ry=0,0
+ if btn(4) or btn(5) or btn(2) or btn(3) then
+  rx,ry=flr(rnd(3))-1,flr(rnd(3))-1
+ end
+ rect(box_x+rx,box_y+ry,box_x+box_w-1+rx,box_y+box_h-1+ry,7)
+
+ if stat(0)>0 then
+  -- pico-8: stat(0), the lua memory in use, is never 0
+  fps,cpu=stat(7),flr(stat(1)*100)
+ else
+  -- v32lua, whose stat() gives 0: frames counted against
+  -- vircon32's 60 hz counter (pico-8 has no system)
+  frames+=1
+  local now=system.frames
+  if now-since>=60 then
+   fps=flr(frames*60/(now-since)+0.5)
+   frames,since=0,now
+  end
+ end
+ print("fps "..fps.."  cpu "..cpu.."%",3+rx,3+ry,7)
+ print("bunnies "..count,3+rx,12+ry,7)
+end
+__gfx__
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000777777000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000707707000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000770077000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00007770077700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000777777700000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000770007000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000700007000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000770007000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000777777000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000770007000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
