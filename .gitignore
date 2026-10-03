@@ -1,0 +1,10 @@
+# what tools/build_releases.py makes
+/releases/
+# a local build of the SDL port, the AKA project and the ESP-IDF settings it writes
+/sdl/build/
+/aka/build/
+/aka/sdkconfig
+/aka/sdkconfig.old
+# the Vircon32 port's build folders (tools/build_releases.py builds elsewhere)
+/vircon32/obj/
+/vircon32/bin/

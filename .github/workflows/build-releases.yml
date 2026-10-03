@@ -1,0 +1,154 @@
+# Builds every BunnyMark version on a Linux runner with tools/build_releases.py and uploads them all
+# as one artifact, with pinned versions of every toolchain and library.
+#
+# The Windows exes of the SDL port are cross compiled with mingw-w64 (tools/mingw-w64.cmake); SDL2
+# and SDL3 are downloaded and linked statically by the port's CMakeLists.
+
+name: Build releases
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+env:
+  # the Arduino side
+  ARDUINO_CLI_VERSION: 1.5.1
+  CORE_ESP8266: 3.1.2
+  CORE_ADAFRUIT_SAMD: 1.7.16
+  CORE_RP2040: 5.5.0
+  CORE_ARDUINO_AVR: 1.8.6
+  # Kevin Bates' CH32X035 handheld, the released board package. Its libraries (CHGfx, CHGame,
+  # CHSd) come from bateske/CHGame, the source of truth for CHGame development
+  CORE_CHGAME: 0.2.4
+  # the ESPboy builds with LovyanGFX and with TFT_eSPI (set up for the ESPboy by the build's defines,
+  # see TFT_ESPI_ESPBOY in tools/build_releases.py). TFT_eSPI 2.4.76, which the development
+  # machine has, was never released to the library index: 2.4.72 is the nearest
+  LIB_LOVYANGFX: 1.1.9
+  LIB_TFT_ESPI: 2.4.72
+  # the PyBadge and the PyGamer draw through Adafruit's GFX and ST7735 libraries
+  LIB_GFX: 1.12.6
+  LIB_ST7735: 1.5.15
+  LIB_BUSIO: 1.17.4
+  LIB_ARDUBOY2: 6.0.0
+  # the Gamebuino AKA: the ESP-IDF version the AKA library's own projects use
+  IDF_VERSION: v5.5.1
+  # Vircon32: the DevTools' Linux package (compile, assemble, png2vircon, packrom)
+  VIRCON32_DEVTOOLS: 26.04.24
+  # the browser build of the SDL port
+  EMSDK_VERSION: 6.0.4
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out BunnyMark
+        uses: actions/checkout@v4
+
+      - name: Install the packages the builds need
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build build-essential python3 mingw-w64
+
+      - name: Install arduino-cli, the board packages and the libraries
+        run: |
+          set -e
+          mkdir -p ~/toolchains/bin
+          curl -sL -o arduino-cli.tar.gz \
+            https://github.com/arduino/arduino-cli/releases/download/v${ARDUINO_CLI_VERSION}/arduino-cli_${ARDUINO_CLI_VERSION}_Linux_64bit.tar.gz
+          tar -xzf arduino-cli.tar.gz -C ~/toolchains/bin arduino-cli && rm arduino-cli.tar.gz
+          export PATH="$HOME/toolchains/bin:$PATH"
+          arduino-cli config init --overwrite
+          arduino-cli config add board_manager.additional_urls \
+            https://arduino.esp8266.com/stable/package_esp8266com_index.json \
+            https://adafruit.github.io/arduino-board-index/package_adafruit_index.json \
+            https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json \
+            https://github.com/bateske/CH32SerialBoot/releases/latest/download/package_chgame_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp8266:esp8266@${CORE_ESP8266}
+          arduino-cli core install adafruit:samd@${CORE_ADAFRUIT_SAMD}
+          arduino-cli core install rp2040:rp2040@${CORE_RP2040}
+          arduino-cli core install arduino:avr@${CORE_ARDUINO_AVR}
+          arduino-cli core install CHGame:ch32v@${CORE_CHGAME}
+          # The CHGame core's ch32yyxx.h asks for "core_riscv_cH32yyxx.h" where the file is
+          # core_riscv_ch32yyxx.h, which only Windows forgives. A link under the name it asks for
+          # leaves the package's own files as they are
+          CH32LIB="$HOME/.arduino15/packages/CHGame/hardware/ch32v/${CORE_CHGAME}/cores/arduino/ch32/lib"
+          if [ -f "$CH32LIB/core_riscv_ch32yyxx.h" ] && [ ! -e "$CH32LIB/core_riscv_cH32yyxx.h" ]; then
+            ln -s core_riscv_ch32yyxx.h "$CH32LIB/core_riscv_cH32yyxx.h"
+          fi
+          arduino-cli lib install "LovyanGFX@${LIB_LOVYANGFX}"
+          arduino-cli lib install "TFT_eSPI@${LIB_TFT_ESPI}"
+          arduino-cli lib install "Adafruit BusIO@${LIB_BUSIO}"
+          arduino-cli lib install "Adafruit GFX Library@${LIB_GFX}"
+          arduino-cli lib install "Adafruit ST7735 and ST7789 Library@${LIB_ST7735}"
+          arduino-cli lib install "Arduboy2@${LIB_ARDUBOY2}"
+
+      - name: Get the CHGame libraries
+        run: git clone --depth 1 https://github.com/bateske/CHGame.git "$HOME/toolchains/CHGame"
+
+      # install.sh is slow, so only the esp32s3 toolchain is asked for
+      - name: Install ESP-IDF and the Gamebuino AKA library
+        run: |
+          set -e
+          git clone -b ${IDF_VERSION} --depth 1 --recurse-submodules --shallow-submodules \
+            https://github.com/espressif/esp-idf.git "$HOME/toolchains/esp-idf"
+          export IDF_TOOLS_PATH="$HOME/toolchains/espressif"
+          export IDF_PATH="$HOME/toolchains/esp-idf"
+          "$IDF_PATH/install.sh" esp32s3
+          # idf_tools.py export insists on every tool of the install, and this one is not in the
+          # esp32s3 set: without it the build stops at "has no installed versions"
+          "$IDF_TOOLS_PATH"/python_env/*/bin/python "$IDF_PATH/tools/idf_tools.py" install riscv32-esp-elf-gdb
+          git clone --depth 1 https://github.com/jmp42/Gamebuino_AKA_lib.git "$HOME/toolchains/Gamebuino_AKA_lib"
+
+      - name: Install the Vircon32 DevTools
+        run: |
+          set -e
+          curl -sSfL --retry 5 -o devtools.zip \
+            https://github.com/vircon32/ComputerSoftware/releases/download/devtools-v${VIRCON32_DEVTOOLS}/Vircon32-DevTools-${VIRCON32_DEVTOOLS}-Linux-64bit-Debian-family.zip
+          unzip -q devtools.zip -d devtools && rm devtools.zip
+          # apt resolves what the tools link against (libpng, tinyxml2)
+          sudo apt-get install -y ./devtools/vircon32-devtools-*.deb
+          rm -rf devtools
+          test -x /usr/local/Vircon32/DevTools/compile
+          test -x /usr/local/Vircon32/DevTools/packrom
+
+      - name: Install Emscripten
+        run: |
+          set -e
+          git clone --depth 1 https://github.com/emscripten-core/emsdk.git "$HOME/toolchains/emsdk"
+          "$HOME/toolchains/emsdk/emsdk" install ${EMSDK_VERSION}
+          "$HOME/toolchains/emsdk/emsdk" activate ${EMSDK_VERSION}
+          test -x "$HOME/toolchains/emsdk/upstream/emscripten/emcc"
+
+      - name: Build every version
+        run: |
+          # emcc finds its own config and node through this, the browser build needs both
+          source "$HOME/toolchains/emsdk/emsdk_env.sh"
+          python3 tools/build_releases.py \
+            --arduino-cli "$HOME/toolchains/bin/arduino-cli" \
+            --chgame-libs "$HOME/toolchains/CHGame/platform/board/arduino/CHGame/libraries" \
+            --idf "$HOME/toolchains/esp-idf" \
+            --idf-tools "$HOME/toolchains/espressif" \
+            --aka-lib "$HOME/toolchains/Gamebuino_AKA_lib" \
+            --vircon32 /usr/local/Vircon32/DevTools \
+            --emsdk "$HOME/toolchains/emsdk" \
+            --msys2 "" \
+            --cross-windows
+
+      - name: Upload the release files
+        uses: actions/upload-artifact@v4
+        with:
+          name: bunnymark_releases
+          path: releases/
+          if-no-files-found: error
+
+      - name: Upload the build logs when something failed
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: /tmp/bunnymark_releases/*.log
+          if-no-files-found: ignore

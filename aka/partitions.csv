@@ -1,0 +1,8 @@
+# Partition table of the AKA games (the *_embedded ones): the app in factory, the launcher
+# in ota_1 where the AKA keeps it
+
+nvs,      data, nvs,     0x9000,   0x6000
+otadata,  data, ota,     0xF000,   0x2000
+factory,  app,  factory, 0x20000,  0x300000
+loader,   app,  ota_1,   0x320000, 0x80000
+storage,  data, fat,     0x3A0000, 0x460000
