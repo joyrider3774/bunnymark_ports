@@ -38,7 +38,11 @@ the two fantasy consoles themselves (`TIC80_BunnyMark.tic`, `PICO8_BunnyMark.p8`
 console's whole screen (240x136, 128x128), plus the same carts made into Vircon32 cartridges by
 [v32lua](https://github.com/wedge1020/v32lua) (`Vircon32_BunnyMark_TIC80.v32`,
 `Vircon32_BunnyMark_PICO8.v32`). TIC-80: A +1, B +100, X +500, Y +1000; PICO-8: O +1, X +100,
-UP +500, DOWN +1000; both the first two together back to 0.
+UP +500, DOWN +1000; both the first two together back to 0. The Vircon32 version also comes
+in Lua (`Vircon32_BunnyMark_Lua.v32`, for v32lua's native API) and in C++
+(`Vircon32_BunnyMark_CPP.v32`, a `Bunny` class in a `std::vector`, through
+[v32c++](https://github.com/wedge1020/v32cxx)), to compare the three languages on one console
+([vircon32](vircon32/README.md#the-lua-and-c-versions)).
 
 Each port's README has what the screen shows, what each part of a frame costs, how
 its display setting changes the frame rate, how it differs from the Playdate
@@ -62,7 +66,7 @@ version and how to build it.
 
 `--only <device>...` builds some, `--list` shows what would be built, `--help` the
 folders it looks for (Arduino IDE 1.8 and 2, bateske/CHGame's libraries, ESP-IDF and the
-AKA library, MSYS2, the Vircon32 DevTools and v32lua, the Emscripten SDK). The GitHub workflow (`.github/workflows/build-releases.yml`, run by
+AKA library, MSYS2, the Vircon32 DevTools, v32lua, v32c++ and v32opt, the Emscripten SDK). The GitHub workflow (`.github/workflows/build-releases.yml`, run by
 hand or on a `v*` tag) installs pinned versions of all of it on a Linux runner, builds
 every version the same way and uploads `releases/` as an artifact. A second job builds the
 SDL port for Linux (x64, arm64) and macOS (Intel, Apple silicon), one artifact per runner.

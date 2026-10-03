@@ -7,6 +7,11 @@ keep adding them and watch what gives out first.
 
 The release file is `Vircon32_BunnyMark.v32`, a cartridge for the Vircon32 emulator,
 desktop or web (`Vircon32Web.html?rom=Vircon32_BunnyMark.v32`, served over http).
+`Vircon32_BunnyMark_Lua.v32` and `Vircon32_BunnyMark_CPP.v32` are the same program written in
+Lua and in C++ (see
+[The Lua and C++ versions](#the-lua-and-c-versions)); `Vircon32_BunnyMark_TIC80.v32` and
+`Vircon32_BunnyMark_PICO8.v32` are the [TIC-80](../tic80/README.md) and
+[PICO-8](../pico8/README.md) carts, made into Vircon32 cartridges.
 
 ## Buttons
 
@@ -75,6 +80,47 @@ In the Vircon32 web emulator:
 - Vircon32's C is its own dialect (every type one 32-bit word, arrays declared as
   `int[10] name`, no `?:`, no `#if`), so the code is the Playdate's logic rewritten in it.
 
+## The Lua and C++ versions
+
+The same program in two more languages, so the three compare what each language costs on one
+console: the box, speeds, buttons, screen and texture are the C version's, and so is the GPU
+work, one draw per bunny.
+
+- **Lua**, `lua/bunnymark.lua`: `BunnyMark.c` line for line, for
+  [v32lua](https://github.com/wedge1020/v32lua) and its native Vircon32 API
+  (`ioports.gpu.draw()` where C calls `draw_region_at`). v32lua compiles Lua to Vircon32
+  assembly, every value a NaN-boxed float, the bunnies in Lua tables. It has no garbage
+  collector, so the status line is built again only when a figure in it changes (the CPU
+  figure once a second, with the frame rate) instead of every frame.
+- **C++**, `cpp/bunnymark.cpp`: for [v32c++](https://github.com/wedge1020/v32cxx), which turns
+  C++ into Vircon32 C for the DevTools' own compiler. Each bunny is a `Bunny` object with
+  `move()` and `draw()`, all of them in one `std::vector<Bunny>` (v32c++'s built-in generic),
+  with room for every bunny reserved at the start. In the generated C, `bunnies[i].move()` is
+  two calls per bunny: the vector's `operator[]` and the method.
+
+In the Vircon32 web emulator, with the same button presses (the counts reached differ a little
+between runs):
+
+| Bunnies | C | C++ | Lua |
+|---|---|---|---|
+| 0 | 60 fps, CPU 1% | 60 fps, CPU 1% | 60 fps, CPU 0% |
+| 101 | 60 fps, CPU 5% | 60 fps, CPU 7% | 60 fps, CPU 19% |
+| 1,601 | | | 15 fps, CPU 301% |
+| 2,101 | 60 fps, CPU 75% | 30 fps, CPU 116% | |
+| 2,601 | | | 12 fps, CPU 489% |
+| 3,101 | 30 fps, CPU 110% | | |
+| 4,101 | | 20 fps, CPU 226% | |
+
+Per bunny, C++ takes about one and a half times the CPU time of C, and Lua about five times.
+
+## Optimized builds
+
+Every Vircon32 cartridge also comes as an `_Opt` one (`Vircon32_BunnyMark_Opt.v32`,
+`Vircon32_BunnyMark_CPP_Opt.v32`, `..._Lua_Opt`, `..._TIC80_Opt`, `..._PICO8_Opt`): the same
+program, its assembly put through [v32opt](https://github.com/wedge1020/v32opt) at `-O3`
+(peepholes, dead code elimination, global constant folding and function inlining) before it is
+assembled. Side by side with the plain one it shows what the optimizer gains for each compiler.
+
 ## Building
 
 With the Vircon32 DevTools (`compile`, `assemble`, `png2vircon`, `packrom`):
@@ -87,5 +133,7 @@ packrom BunnyMark.xml -o bin/BunnyMark.v32
 ```
 
 or `tools/build_releases.py --only Vircon32` in the folder above (`--vircon32` names
-the DevTools folder). `assets/bunny.png` (the bunny and a black block for the box's
-lines) comes from `tools/make_sprites.py`.
+the DevTools folder), which also builds the Lua version and the TIC-80 and PICO-8 ones with
+v32lua (`--v32lua`), the C++ version with v32c++ (`--v32cxx`), and every `_Opt` cartridge with
+v32opt (`--v32opt`). `assets/bunny.png` (the bunny and a black block for the box's lines) comes
+from `tools/make_sprites.py`.

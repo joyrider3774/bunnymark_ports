@@ -126,6 +126,25 @@ jobs:
           make -C "$HOME/toolchains/v32lua"
           test -x "$HOME/toolchains/v32lua/bin/v32lua"
 
+      # v32c++ turns the C++ version into Vircon32 C for the DevTools' compiler; also only as source.
+      # flex and bison in case make wants to regenerate its lexer and parser
+      - name: Build v32c++
+        run: |
+          set -e
+          sudo apt-get install -y --no-install-recommends flex bison
+          git clone --depth 1 https://github.com/wedge1020/v32cxx.git "$HOME/toolchains/v32cxx"
+          make -C "$HOME/toolchains/v32cxx"
+          test -x "$HOME/toolchains/v32cxx/bin/v32c++"
+
+      # v32opt optimizes the assembly of every Vircon32 cartridge for its _Opt variant (-O3);
+      # built from its main branch, it has no release builds
+      - name: Build v32opt
+        run: |
+          set -e
+          git clone --depth 1 https://github.com/wedge1020/v32opt.git "$HOME/toolchains/v32opt"
+          make -C "$HOME/toolchains/v32opt"
+          test -x "$HOME/toolchains/v32opt/v32opt"
+
       - name: Install Emscripten
         run: |
           set -e
@@ -146,6 +165,8 @@ jobs:
             --aka-lib "$HOME/toolchains/Gamebuino_AKA_lib" \
             --vircon32 /usr/local/Vircon32/DevTools \
             --v32lua "$HOME/toolchains/v32lua/bin/v32lua" \
+            --v32cxx "$HOME/toolchains/v32cxx/bin/v32c++" \
+            --v32opt "$HOME/toolchains/v32opt/v32opt" \
             --emsdk "$HOME/toolchains/emsdk" \
             --msys2 "" \
             --cross-windows

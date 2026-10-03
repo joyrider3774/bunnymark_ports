@@ -14,8 +14,11 @@ Every file is named <device>_BunnyMark<variant>.<ext>, for example PicoSystem_Bu
   Tufty          .uf2   hold HOME while pressing RESET and copy it onto the drive that appears
   Aka            .zip   the folder for the AKA launcher's SD card: firmware.bin, meta.json, screen.bmp
   Windows        .exe   _SDL2 and _SDL3, linked statically, they run on their own
-  Vircon32       .v32   the cartridge, for the Vircon32 emulator (desktop or web); _TIC80 and _PICO8
-                        the TIC-80 and PICO-8 carts made into Vircon32 cartridges by v32lua
+  Vircon32       .v32   the cartridge, for the Vircon32 emulator (desktop or web); _Lua the same
+                        program in Lua, _TIC80 and _PICO8 the TIC-80 and PICO-8 carts, all three
+                        made into Vircon32 cartridges by v32lua; _CPP the same program in C++,
+                        through v32c++. Each also as _Opt (_TIC80_Opt, ...): its assembly put
+                        through the v32opt optimizer (-O3) before it is assembled
   Web            .zip   _SDL2 and _SDL3: index.html, .js and .wasm, ready for a web server or an
                         itch.io HTML game
   TIC80          .tic   the TIC-80 cart (made here from tic80/bunnymark.lua), for TIC-80 itself
@@ -57,6 +60,9 @@ Usage:
                      VIRCON32_DEVTOOLS; the Linux package puts them in /usr/local/Vircon32/DevTools)
   --emsdk DIR        the Emscripten SDK for the browser build (default EMSDK, or C:/github/emsdk)
   --v32lua PATH      the v32lua compiler (default V32LUA, or C:/github/v32lua/bin/v32lua)
+  --v32cxx PATH      the v32c++ transpiler (default V32CXX, or C:/github/v32cxx/bin/v32c++)
+  --v32opt PATH      the v32opt assembly optimizer for the _Opt cartridges (default V32OPT, or
+                     C:/github/v32opt/v32opt)
 """
 import argparse
 import glob
@@ -107,6 +113,15 @@ TARGETS = [
     # the TIC-80 and PICO-8 carts made into Vircon32 cartridges by v32lua
     ("Vircon32", "_TIC80", {}),
     ("Vircon32", "_PICO8", {}),
+    # and the C version written in Lua, also compiled by v32lua, and in C++, through v32c++
+    ("Vircon32", "_Lua", {}),
+    ("Vircon32", "_CPP", {}),
+    # every Vircon32 cartridge again, its assembly put through the v32opt optimizer (-O3) first
+    ("Vircon32", "_Opt", {}),
+    ("Vircon32", "_TIC80_Opt", {}),
+    ("Vircon32", "_PICO8_Opt", {}),
+    ("Vircon32", "_Lua_Opt", {}),
+    ("Vircon32", "_CPP_Opt", {}),
 ]
 
 # sketch: the sketch folder. fqbn: board and options. cli: built with arduino-cli even next to an Arduino IDE 1.8. libraries: extra library
@@ -177,8 +192,12 @@ DEVICES = {
     },
     "Vircon32": {
         "vircon32": "vircon32",
-        # the variants _TIC80 and _PICO8 are those carts compiled by v32lua instead of the C program
-        "carts": {"_TIC80": "TIC80", "_PICO8": "PICO8"},
+        # the variants _TIC80 and _PICO8 are those carts compiled by v32lua instead of the C program,
+        # _Lua the C program's Lua twin (vircon32/lua, v32lua's native Vircon32 API); _CPP its C++
+        # twin (vircon32/cpp), turned into Vircon32 C by v32c++
+        "carts": {"_TIC80": "TIC80", "_PICO8": "PICO8", "_Lua": "Lua"},
+        "lua": "vircon32/lua/bunnymark.lua",
+        "cpp": "vircon32/cpp/bunnymark.cpp",
         "outputs": ["v32"],
     },
     "TIC80": {
@@ -445,7 +464,41 @@ def build_web(defines, build_dir, args, log):
     return os.path.join(build_dir, "bunnymark_sdl%s" % sdl)
 
 
-def build_vircon32(build_dir, args, log):
+def run_vircon32_steps(commands, build_dir, args, log, optimize):
+    """Runs the commands of a Vircon32 build in the build folder, writing them and their output to
+    the log. Two steps are not commands: "move" puts the ROM definition written into obj/ beside
+    the build, where packrom looks for the paths in it, and "optimize" (only when optimize is set,
+    for the _Opt variants) runs v32opt -O3 over obj/BunnyMark.asm before it is assembled. True when
+    every step worked"""
+    with open(log, "w") as f:
+        for command in commands:
+            if command == "move":
+                os.replace(os.path.join(build_dir, "obj", GAME + ".xml"), os.path.join(build_dir, GAME + ".xml"))
+                continue
+            if command == "optimize":
+                if not optimize:
+                    continue
+                # the compiler's assembly kept as BunnyMark.raw.asm, the optimized one takes its name
+                asm = os.path.join(build_dir, "obj", GAME + ".asm")
+                os.replace(asm, os.path.join(build_dir, "obj", GAME + ".raw.asm"))
+                command = [args.v32opt, "-O3", "-v", "obj/%s.raw.asm" % GAME, "-o", "obj/%s.asm" % GAME]
+            f.write(" ".join(command) + "\n")
+            f.flush()
+            if subprocess.run(command, stdout=f, stderr=subprocess.STDOUT, cwd=build_dir).returncode != 0:
+                return False
+    return True
+
+
+def missing_v32opt(args, log, optimize):
+    """True (with the reason in the log) when an _Opt variant is asked for without v32opt"""
+    if optimize and not os.path.isfile(args.v32opt):
+        with open(log, "w") as f:
+            f.write("v32opt was not found at %s: pass --v32opt\n" % args.v32opt)
+        return True
+    return False
+
+
+def build_vircon32(build_dir, args, log, optimize=False):
     """The Vircon32 cartridge with its DevTools: the C program compiled and assembled, the texture
     converted, and both packed by the ROM definition. Run in the build folder, where the ROM
     definition's obj/ paths point. Returns the .v32's path without extension, or None"""
@@ -456,20 +509,19 @@ def build_vircon32(build_dir, args, log):
         with open(log, "w") as f:
             f.write("the Vircon32 DevTools were not found in %s: pass --vircon32\n" % args.vircon32)
         return None
+    if missing_v32opt(args, log, optimize):
+        return None
     os.makedirs(os.path.join(build_dir, "obj"), exist_ok=True)
     shutil.copyfile(os.path.join(source, "BunnyMark.xml"), os.path.join(build_dir, "BunnyMark.xml"))
     commands = [
         [tool("compile"), os.path.join(source, "BunnyMark.c"), "-o", "obj/BunnyMark.asm"],
+        "optimize",
         [tool("assemble"), "obj/BunnyMark.asm", "-o", "obj/BunnyMark.vbin"],
         [tool("png2vircon"), os.path.join(source, "assets", "bunny.png"), "-o", "obj/bunny.vtex"],
         [tool("packrom"), "BunnyMark.xml", "-o", "BunnyMark.v32"],
     ]
-    with open(log, "w") as f:
-        for command in commands:
-            f.write(" ".join(command) + "\n")
-            f.flush()
-            if subprocess.run(command, stdout=f, stderr=subprocess.STDOUT, cwd=build_dir).returncode != 0:
-                return None
+    if not run_vircon32_steps(commands, build_dir, args, log, optimize):
+        return None
     return os.path.join(build_dir, "BunnyMark")
 
 
@@ -516,10 +568,11 @@ def build_cart(device, build_dir, log):
     return target
 
 
-def build_v32lua(device, build_dir, args, log):
+def build_v32lua(device, build_dir, args, log, optimize=False):
     """A TIC-80 or PICO-8 cart (the .tic made from the TIC-80 project, so the released cart is the
-    one converted) compiled by v32lua into assembly and a ROM definition, assembled and packed with
-    the Vircon32 DevTools. Returns the .v32's path without extension, or None"""
+    one converted), or ("Lua") the native Lua version with the C version's texture, compiled by
+    v32lua into assembly and a ROM definition, assembled and packed with the Vircon32 DevTools.
+    Returns the .v32's path without extension, or None"""
     exe = ".exe" if os.name == "nt" else ""
     tool = lambda name: os.path.join(args.vircon32, name + exe)
     if not os.path.isfile(args.v32lua):
@@ -530,27 +583,72 @@ def build_v32lua(device, build_dir, args, log):
         with open(log, "w") as f:
             f.write("the Vircon32 DevTools were not found in %s: pass --vircon32\n" % args.vircon32)
         return None
-    cart = build_cart(device, os.path.join(build_dir, "cart"), log + ".cart")
-    ext = ".tic" if device == "TIC80" else ".p8"
+    if missing_v32opt(args, log, optimize):
+        return None
     os.makedirs(os.path.join(build_dir, "obj"), exist_ok=True)
+    textures = []
+    if device == "Lua":
+        # the source and the texture its --#texture names (assets/bunny.png), converted to the
+        # .vtex the ROM definition lists
+        cart, ext = os.path.join(build_dir, GAME), ".lua"
+        shutil.copyfile(os.path.join(ROOT, DEVICES["Vircon32"]["lua"]), cart + ext)
+        os.makedirs(os.path.join(build_dir, "assets"), exist_ok=True)
+        shutil.copyfile(os.path.join(ROOT, "vircon32", "assets", "bunny.png"),
+                        os.path.join(build_dir, "assets", "bunny.png"))
+        textures = [[tool("png2vircon"), "assets/bunny.png", "-o", "assets/bunny.vtex"]]
+    else:
+        cart = build_cart(device, os.path.join(build_dir, "cart"), log + ".cart")
+        ext = ".tic" if device == "TIC80" else ".p8"
     # v32lua writes the ROM definition (and the textures and sounds it lists) beside the assembly,
     # with paths from the build folder (obj/...), where packrom looks from the definition's own
     # folder: it is moved up first, as v32lua's demos do
     commands = [
         [args.v32lua, "--title", "[%s] %s" % (device, GAME), "-o", "obj/%s.asm" % GAME, cart + ext],
+        "optimize",
         [tool("assemble"), "obj/%s.asm" % GAME, "-o", "obj/%s.vbin" % GAME],
+    ] + textures + [
         "move",
         [tool("packrom"), GAME + ".xml", "-o", GAME + ".v32"],
     ]
-    with open(log, "w") as f:
-        for command in commands:
-            if command == "move":
-                os.replace(os.path.join(build_dir, "obj", GAME + ".xml"), os.path.join(build_dir, GAME + ".xml"))
-                continue
-            f.write(" ".join(command) + "\n")
-            f.flush()
-            if subprocess.run(command, stdout=f, stderr=subprocess.STDOUT, cwd=build_dir).returncode != 0:
-                return None
+    if not run_vircon32_steps(commands, build_dir, args, log, optimize):
+        return None
+    return os.path.join(build_dir, GAME)
+
+
+def build_v32cxx(build_dir, args, log, optimize=False):
+    """The C++ version: v32c++ turns it into Vircon32 C and writes its ROM definition (the texture
+    its #texture names, as a .vtex), then the Vircon32 DevTools compile, assemble and pack it, as
+    the C version. Returns the .v32's path without extension, or None"""
+    exe = ".exe" if os.name == "nt" else ""
+    tool = lambda name: os.path.join(args.vircon32, name + exe)
+    if not os.path.isfile(args.v32cxx):
+        with open(log, "w") as f:
+            f.write("v32c++ was not found at %s: pass --v32cxx\n" % args.v32cxx)
+        return None
+    if not os.path.isfile(tool("compile")):
+        with open(log, "w") as f:
+            f.write("the Vircon32 DevTools were not found in %s: pass --vircon32\n" % args.vircon32)
+        return None
+    if missing_v32opt(args, log, optimize):
+        return None
+    for folder in ("obj", "assets"):
+        os.makedirs(os.path.join(build_dir, folder), exist_ok=True)
+    shutil.copyfile(os.path.join(ROOT, DEVICES["Vircon32"]["cpp"]), os.path.join(build_dir, GAME + ".cpp"))
+    shutil.copyfile(os.path.join(ROOT, "vircon32", "assets", "bunny.png"),
+                    os.path.join(build_dir, "assets", "bunny.png"))
+    # v32c++ writes the ROM definition beside the C (obj/), with paths from the build folder,
+    # where packrom looks from the definition's own folder: it is moved up first
+    commands = [
+        [args.v32cxx, "-o", "obj/%s.c" % GAME, GAME + ".cpp"],
+        [tool("compile"), "obj/%s.c" % GAME, "-o", "obj/%s.asm" % GAME],
+        "optimize",
+        [tool("assemble"), "obj/%s.asm" % GAME, "-o", "obj/%s.vbin" % GAME],
+        [tool("png2vircon"), "assets/bunny.png", "-o", "assets/bunny.vtex"],
+        "move",
+        [tool("packrom"), GAME + ".xml", "-o", GAME + ".v32"],
+    ]
+    if not run_vircon32_steps(commands, build_dir, args, log, optimize):
+        return None
     return os.path.join(build_dir, GAME)
 
 
@@ -619,6 +717,10 @@ def main():
     parser.add_argument("--cross-windows", action="store_true")
     parser.add_argument("--vircon32", default=os.environ.get("VIRCON32_DEVTOOLS", "C:/utils/vircon32/DevTools"))
     parser.add_argument("--emsdk", default=os.environ.get("EMSDK", "C:/github/emsdk"))
+    parser.add_argument("--v32opt", default=os.environ.get(
+        "V32OPT", "C:/github/v32opt/v32opt" + (".exe" if os.name == "nt" else "")))
+    parser.add_argument("--v32cxx", default=os.environ.get(
+        "V32CXX", "C:/github/v32cxx/bin/v32c++" + (".exe" if os.name == "nt" else "")))
     parser.add_argument("--v32lua", default=os.environ.get(
         "V32LUA", "C:/github/v32lua/bin/v32lua" + (".exe" if os.name == "nt" else "")))
     args = parser.parse_args()
@@ -647,10 +749,16 @@ def main():
             built = build_web(defines, build_dir, args, log)
         elif "cmake" in DEVICES[device]:
             built = build_windows(defines, build_dir, args, log)
-        elif "vircon32" in DEVICES[device] and variant in DEVICES[device]["carts"]:
-            built = build_v32lua(DEVICES[device]["carts"][variant], build_dir, args, log)
         elif "vircon32" in DEVICES[device]:
-            built = build_vircon32(build_dir, args, log)
+            # an _Opt variant is its plain one with the assembly optimized
+            optimize = variant.endswith("_Opt")
+            base = variant[:-len("_Opt")] if optimize else variant
+            if base == "_CPP":
+                built = build_v32cxx(build_dir, args, log, optimize)
+            elif base in DEVICES[device]["carts"]:
+                built = build_v32lua(DEVICES[device]["carts"][base], build_dir, args, log, optimize)
+            else:
+                built = build_vircon32(build_dir, args, log, optimize)
         elif "cart" in DEVICES[device]:
             built = build_cart(device, build_dir, log)
         else:
