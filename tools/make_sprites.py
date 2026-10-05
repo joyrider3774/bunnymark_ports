@@ -187,7 +187,8 @@ def main():
             len(whites), ", ".join("0x%04X" % v for v in whites)))
     print("wrote", path, len(spans), "runs and 1 bpp masks")
 
-    # The ports that keep their whole screen in RAM (pybadge/, picosystem/, pimoroni2350/), in the
+    # The ports that keep their whole screen in RAM (pybadge/, picosystem/, pimoroni2350/, thumbycolor/),
+    # in the
     # same forms, as BUNNY16_; the 1 bpp masks are a uint16_t a row, the top bit the leftmost
     # pixel. Written to common/ and copied into each of those sketches with the rest of common/
     # (an Arduino sketch only compiles what is in its own folder)
@@ -230,7 +231,7 @@ def main():
     print("wrote", path)
     shared = [os.path.join(HERE, "common", name) for name in ("bunny.h", "BunnyFrame.h", "BunnyGame.h")]
     shared.append(os.path.join(HERE, "sdl", "font8x8_basic.h"))
-    for sketch in ("pybadge", "picosystem", "pimoroni2350"):
+    for sketch in ("pybadge", "picosystem", "pimoroni2350", "thumbycolor"):
         folder = os.path.join(HERE, sketch, "BunnyMark")
         os.makedirs(folder, exist_ok=True)
         for source in shared:
@@ -238,7 +239,7 @@ def main():
                 data = f.read()
             with open(os.path.join(folder, os.path.basename(source)), "wb") as f:
                 f.write(data)
-    print("copied common/ and the font into pybadge/, picosystem/ and pimoroni2350/")
+    print("copied common/ and the font into pybadge/, picosystem/, pimoroni2350/ and thumbycolor/")
 
     # Vircon32 (640x360): one texture for its GPU, the bunny (black, white and transparent) at
     # 0,0 and a 4x4 black block at 32,0, which the port stretches into the box's lines (the

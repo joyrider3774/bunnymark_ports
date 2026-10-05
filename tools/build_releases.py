@@ -12,6 +12,8 @@ Every file is named <device>_BunnyMark<variant>.<ext>, for example PicoSystem_Bu
   PicoSystem     .uf2   hold X while switching on and copy it onto the drive that appears
   Explorer       .uf2   hold BOOT while pressing RESET and copy it onto the drive that appears
   Tufty          .uf2   hold HOME while pressing RESET and copy it onto the drive that appears
+  ThumbyColor    .uf2   _ARM and _RISCV, the same sketch for the RP2350's Cortex-M33 and its Hazard3
+                        RISC-V cores; hold DOWN while switching on and copy it onto the drive
   Aka            .zip   the folder for the AKA launcher's SD card: firmware.bin, meta.json, screen.bmp
   Windows        .exe   _SDL2 and _SDL3, linked statically, they run on their own
   Vircon32       .v32   the cartridge, for the Vircon32 emulator (desktop or web); _Lua the same
@@ -102,6 +104,9 @@ TARGETS = [
     ("PicoSystem", "", {}),
     ("Explorer", "", {}),
     ("Tufty", "", {}),
+    # the same sketch for each of the RP2350's two kinds of core, see DEVICES
+    ("ThumbyColor", "_ARM", {}),
+    ("ThumbyColor", "_RISCV", {}),
     ("Aka", "", {}),
     ("Windows", "_SDL2", {"BUNNYMARK_SDL": 2}),
     ("Windows", "_SDL3", {"BUNNYMARK_SDL": 3}),
@@ -127,7 +132,7 @@ TARGETS = [
 # sketch: the sketch folder. fqbn: board and options. cli: built with arduino-cli even next to an Arduino IDE 1.8. libraries: extra library
 # folders, relative to --chgame-libs. toolchain: the compiler a core asks for, pinned (see
 # toolchain_pref). outputs: what is released, "uf2 from bin" made here from the .bin at the given
-# base address and UF2 family
+# base address and UF2 family. arch: a variant's CPU Architecture, put into the fqbn's {arch}
 DEVICES = {
     "CHGame": {
         "sketch": "chgame/BunnyMark",
@@ -179,6 +184,15 @@ DEVICES = {
         "sketch": "pimoroni2350/BunnyMark",
         "fqbn": "rp2040:rp2040:generic_rp2350:variantchip=RP2530B,psramcs=GPIO8,psram=8mb,flash=16777216_0,"
                 "arch=arm,freq=150,usbstack=picosdk,opt=Small",
+        "outputs": ["uf2"],
+    },
+    # arduino-pico has no Thumby Color board: the Generic RP2350 with the RP2350A chip, as in the
+    # *_embedded games. Built for the Cortex-M33 (arm) and for the Hazard3 cores (riscv)
+    "ThumbyColor": {
+        "sketch": "thumbycolor/BunnyMark",
+        "fqbn": "rp2040:rp2040:generic_rp2350:variantchip=RP2350A,flash=16777216_0,arch={arch},freq=150,"
+                "usbstack=picosdk,opt=Small",
+        "arch": {"_ARM": "arm", "_RISCV": "riscv"},
         "outputs": ["uf2"],
     },
     "Aka": {
@@ -296,12 +310,13 @@ def cli_packages(cli, config):
 
 # ---------------------------------------------------------------------------------- the builders
 
-def build_arduino(device, defines, build_dir, args, log):
+def build_arduino(device, variant, defines, build_dir, args, log):
     """An Arduino sketch, with arduino-cli or the IDE 1.8's arduino-builder. Returns the path of the
     build's files without extension, or None"""
     spec = DEVICES[device]
     sketch = os.path.join(ROOT, spec["sketch"])
     name = os.path.basename(sketch)
+    fqbn = spec["fqbn"].format(arch=spec["arch"][variant]) if "arch" in spec else spec["fqbn"]
     flags = define_flags(defines)
     cache = build_dir + "_cache"
     os.makedirs(build_dir, exist_ok=True)
@@ -324,7 +339,7 @@ def build_arduino(device, defines, build_dir, args, log):
         if toolchain is None:
             return None
         command = [cli] + (["--config-file", config] if config else []) + [
-            "compile", "--fqbn", spec["fqbn"], "--build-path", build_dir, "--build-cache-path", cache,
+            "compile", "--fqbn", fqbn, "--build-path", build_dir, "--build-cache-path", cache,
             "--build-property", "compiler.c.extra_flags=" + flags,
             "--build-property", "compiler.cpp.extra_flags=" + flags]
         for lib in libraries:
@@ -347,7 +362,7 @@ def build_arduino(device, defines, build_dir, args, log):
             "-tools", os.path.join(portable, "packages"),
             "-built-in-libraries", os.path.join(args.arduino, "libraries"),
             "-libraries", os.path.join(portable, "sketchbook", "libraries"),
-            "-fqbn", spec["fqbn"], "-ide-version=10819",
+            "-fqbn", fqbn, "-ide-version=10819",
             "-build-path", build_dir, "-build-cache", cache,
             "-prefs", "compiler.c.extra_flags=" + flags,
             "-prefs", "compiler.cpp.extra_flags=" + flags,
@@ -762,7 +777,7 @@ def main():
         elif "cart" in DEVICES[device]:
             built = build_cart(device, build_dir, log)
         else:
-            built = build_arduino(device, defines, build_dir, args, log)
+            built = build_arduino(device, variant, defines, build_dir, args, log)
         if built is None:
             failed += 1
             lines = open(log, errors="replace").read().splitlines() if os.path.exists(log) else []

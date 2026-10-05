@@ -1,4 +1,4 @@
-# BunnyMark for the CHGame, the Gamebuino AKA, the Arduboy, the ESPboy, Pimoroni and Adafruit handhelds, Vircon32, SDL2/SDL3 and the web
+# BunnyMark for the CHGame, the Gamebuino AKA, the Arduboy, the ESPboy, the Thumby Color, Pimoroni and Adafruit handhelds, Vircon32, SDL2/SDL3 and the web
 
 Ports of [Timofffee's Playdate bunnymark](https://github.com/Timofffee/bunnymark-playdate),
 itself raylib's `textures_bunnymark` by Ramon Santamaria: bunnies bounce around a
@@ -26,11 +26,13 @@ bunny is the same work everywhere, and only the screen each clears and sends dif
 
 **PyBadge and PyGamer** ([pybadge](pybadge/README.md)), **PicoSystem**
 ([picosystem](picosystem/README.md)), **Explorer 2350 and Tufty 2350**
-([pimoroni2350](pimoroni2350/README.md)): three sketches sharing the game and the frame
-(`common/BunnyGame.h`, `common/BunnyFrame.h`), each with its own display driver. Every
-device uses its whole screen, 1:1 (160x128, 240x240 and 320x240); +1, +100, +500, +1000
-and back to 0 on each device's buttons, and one button switches the frame between 16, 8 and
-1 bpp while it runs. Run on a PicoSystem, an Explorer, a Tufty and a PyGamer; the PyBadge built,
+([pimoroni2350](pimoroni2350/README.md)), **Thumby Color** ([thumbycolor](thumbycolor/README.md)):
+four sketches sharing the game and the frame (`common/BunnyGame.h`, `common/BunnyFrame.h`), each
+with its own display driver. Every device uses its whole screen, 1:1 (160x128, 240x240, 320x240
+and 128x128); +1, +100, +500, +1000 and back to 0 on each device's buttons, and one button
+switches the frame between 16, 8 and 1 bpp while it runs. The Thumby Color comes twice, built for
+the RP2350's Cortex-M33 cores and for its Hazard3 RISC-V cores, to compare the two on one chip.
+Run on a PicoSystem, an Explorer, a Tufty and a PyGamer; the PyBadge and the Thumby Color built,
 not yet run.
 
 **TIC-80** ([tic80](tic80/README.md)) and **PICO-8** ([pico8](pico8/README.md)): Lua carts for
@@ -59,6 +61,7 @@ version and how to build it.
 | `Arduboy_BunnyMark.hex`, `.bin` | Arduboy |
 | `ESPboy_BunnyMark_LovyanGFX.bin`, `_TFT_eSPI.bin` | ESPboy, one per display library |
 | `PyBadge_`, `PyGamer_`, `PicoSystem_`, `Explorer_`, `Tufty_BunnyMark.uf2` | the Adafruit and Pimoroni handhelds |
+| `ThumbyColor_BunnyMark_ARM.uf2`, `_RISCV.uf2` | the Thumby Color, one per kind of RP2350 core |
 | `Aka_BunnyMark.zip` | the AKA launcher's SD card folder |
 | `Windows_BunnyMark_SDL2.exe`, `_SDL3.exe` | SDL on Windows |
 | `Web_BunnyMark_SDL2.zip`, `_SDL3.zip` | SDL in a browser (Emscripten): index.html, .js, .wasm |
