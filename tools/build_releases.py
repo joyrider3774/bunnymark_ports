@@ -49,8 +49,8 @@ Usage:
                      (~/.arduinoIDE/arduino-cli.yaml) so it finds the IDE's libraries
   --arduino-cli PATH build every Arduino device with this arduino-cli instead, with its own
                      settings (default ARDUINO_CLI). This is what the CI workflow uses
-  --chgame-libs DIR  the libraries folder of bateske/CHGame's board package (default
-                     C:/github/CHGame/platform/board/arduino/CHGame/libraries, or CHGAME_LIBS)
+  --chgame-libs DIR  the libraries folder of bateske/CHGame's board package, as installed
+                     (default the installed CHGame 0.3.0 package's, or CHGAME_LIBS)
   --idf DIR          ESP-IDF (default IDF_PATH, or C:/github/esp-idf)
   --idf-tools DIR    where ESP-IDF installed its tools (default IDF_TOOLS_PATH, or C:/Espressif)
   --aka-lib DIR      the Gamebuino AKA library (default AKA_LIB_DIR, or C:/github/Gamebuino_AKA_lib)
@@ -136,7 +136,7 @@ TARGETS = [
 DEVICES = {
     "CHGame": {
         "sketch": "chgame/BunnyMark",
-        "fqbn": "CHGame:ch32v:CHGame:opt=o2std,periph=game,usb=uploadonly",
+        "fqbn": "CHGame:ch32v:rev0:opt=o2std,periph=game,usb=uploadonly",
         "cli": True,
         "libraries": ["CHGfx", "CHGame", "CHSd"],
         "outputs": ["bin"],
@@ -724,7 +724,8 @@ def main():
     parser.add_argument("--arduino2", default=os.environ.get("ARDUINO2_DIR", "C:/arduino2"))
     parser.add_argument("--arduino-cli", default=os.environ.get("ARDUINO_CLI", ""))
     parser.add_argument("--chgame-libs", default=os.environ.get(
-        "CHGAME_LIBS", "C:/github/CHGame/platform/board/arduino/CHGame/libraries"))
+        "CHGAME_LIBS", os.path.join(os.environ.get("LOCALAPPDATA", ""),
+                                    "Arduino15/packages/CHGame/hardware/ch32v/0.3.0/libraries")))
     parser.add_argument("--idf", default=os.environ.get("IDF_PATH", "C:/github/esp-idf"))
     parser.add_argument("--idf-tools", default=os.environ.get("IDF_TOOLS_PATH", "C:/Espressif"))
     parser.add_argument("--aka-lib", default=os.environ.get("AKA_LIB_DIR", "C:/github/Gamebuino_AKA_lib"))

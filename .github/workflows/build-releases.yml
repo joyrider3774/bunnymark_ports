@@ -21,9 +21,9 @@ env:
   CORE_ADAFRUIT_SAMD: 1.7.16
   CORE_RP2040: 5.5.0
   CORE_ARDUINO_AVR: 1.8.6
-  # Kevin Bates' CH32X035 handheld, the released board package. Its libraries (CHGfx, CHGame,
-  # CHSd) come from bateske/CHGame, the source of truth for CHGame development
-  CORE_CHGAME: 0.2.4
+  # Kevin Bates' CH32X035 handheld, the released board package (bateske/CHGame). Its libraries
+  # (CHGfx, CHGame, CHSd) come with it
+  CORE_CHGAME: 0.3.0
   # the ESPboy builds with LovyanGFX and with TFT_eSPI (set up for the ESPboy by the build's defines,
   # see TFT_ESPI_ESPBOY in tools/build_releases.py). TFT_eSPI 2.4.76, which the development
   # machine has, was never released to the library index: 2.4.72 is the nearest
@@ -67,7 +67,7 @@ jobs:
             https://arduino.esp8266.com/stable/package_esp8266com_index.json \
             https://adafruit.github.io/arduino-board-index/package_adafruit_index.json \
             https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json \
-            https://github.com/bateske/CH32SerialBoot/releases/latest/download/package_chgame_index.json
+            https://github.com/bateske/CHGame/releases/latest/download/package_chgame_index.json
           arduino-cli core update-index
           arduino-cli core install esp8266:esp8266@${CORE_ESP8266}
           arduino-cli core install adafruit:samd@${CORE_ADAFRUIT_SAMD}
@@ -87,9 +87,6 @@ jobs:
           arduino-cli lib install "Adafruit GFX Library@${LIB_GFX}"
           arduino-cli lib install "Adafruit ST7735 and ST7789 Library@${LIB_ST7735}"
           arduino-cli lib install "Arduboy2@${LIB_ARDUBOY2}"
-
-      - name: Get the CHGame libraries
-        run: git clone --depth 1 https://github.com/bateske/CHGame.git "$HOME/toolchains/CHGame"
 
       # install.sh is slow, so only the esp32s3 toolchain is asked for
       - name: Install ESP-IDF and the Gamebuino AKA library
@@ -160,7 +157,7 @@ jobs:
           source "$HOME/toolchains/emsdk/emsdk_env.sh"
           python3 tools/build_releases.py \
             --arduino-cli "$HOME/toolchains/bin/arduino-cli" \
-            --chgame-libs "$HOME/toolchains/CHGame/platform/board/arduino/CHGame/libraries" \
+            --chgame-libs "$HOME/.arduino15/packages/CHGame/hardware/ch32v/${CORE_CHGAME}/libraries" \
             --idf "$HOME/toolchains/esp-idf" \
             --idf-tools "$HOME/toolchains/espressif" \
             --aka-lib "$HOME/toolchains/Gamebuino_AKA_lib" \
